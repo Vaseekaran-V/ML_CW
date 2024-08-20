@@ -20,8 +20,10 @@ def preprocess_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size 
     df_process[date_col] = pd.to_datetime(df_process[date_col])
     df_process_gb = df_process.groupby([date_col, 'item_dept', 'store'])[['item_qty', 'net_sales']].sum().reset_index()
 
+    #creating lag features
     df_process_gb_lags = create_lag_features(df = df_process_gb, feature_name = 'item_qty', num_lags = num_lags)
     df_process_gb_lags = create_lag_features(df = df_process_gb_lags, feature_name = 'net_sales', num_lags = num_lags)
+
 
     df_process_gb_roll = create_rolling_window_features(df = df_process_gb_lags, feature_name = 'item_qty',
                                                         window_size = rolling_window_size, std_dev = std_dev, use_lag = use_lag)
@@ -46,10 +48,6 @@ def preprocess_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size 
                                                        week_window_size = week_window_size, use_lag = use_lag)
     
     return df_process_diff
-
-
-
-
 
 def create_lag_features(df, feature_name, num_lags = 1):
     '''
@@ -145,6 +143,7 @@ def create_time_based_features(df, date_col, years = [2021, 2022]):
 
     # Is weekend (1=Weekend, 0=Weekday)
     df_process['isWeekend'] = df_process[date_col].dt.dayofweek >= 5
+    df_process['isWeekend'] = df_process['isWeekend'].astype(int)
 
     #Is holiday (1=Holiday, 0=No Holiday). Assuming this store is in US
     us_holidays = holidays.US(years=years)
