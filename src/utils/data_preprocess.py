@@ -1,7 +1,9 @@
 import holidays
 import pandas as pd
 import numpy as np
+from prefect import flow, task
 
+@task
 def preprocess_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size = 2,
                     std_dev = True, use_lag = True, cum_mean = True,cum_sum = True,
                     years = [2021, 2022], return_min = True, return_max = True, week_window_size = 7):
@@ -49,6 +51,7 @@ def preprocess_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size 
     
     return df_process_diff
 
+@task
 def create_lag_features(df, feature_name, num_lags = 1):
     '''
     Creating lag features for the specified field.
@@ -67,6 +70,7 @@ def create_lag_features(df, feature_name, num_lags = 1):
 
     return df_process
 
+@task
 def create_rolling_window_features(df, feature_name, window_size = 2, std_dev = True, use_lag = True):
     '''
     Creating rolling window features (mean and, if required, standard deviation) of a feature for a specified window size
@@ -94,6 +98,7 @@ def create_rolling_window_features(df, feature_name, window_size = 2, std_dev = 
         print("Function not yet designed to use without lag features")
         return None
 
+@task
 def create_cumulative_features(df, feature_name, cum_mean = True, cum_sum = True, use_lag = True):
     '''
     Creating cumulative features for the specified field.
@@ -124,6 +129,7 @@ def create_cumulative_features(df, feature_name, cum_mean = True, cum_sum = True
         print("Function not yet designed to use without lag features")
         return None
 
+@task
 def create_time_based_features(df, date_col, years = [2021, 2022]):
     '''
     Function to create time based features
@@ -151,6 +157,7 @@ def create_time_based_features(df, date_col, years = [2021, 2022]):
 
     return df_process
 
+@task
 def create_expanding_window_features(df, feature_name, return_min = True, return_max = True, use_lag = True):
     '''
     Function to create expanding window features (that is get the max and min) while the window expands
@@ -183,6 +190,7 @@ def create_expanding_window_features(df, feature_name, return_min = True, return
         print("Function not yet designed to use without lag features")
         return None
 
+@task
 def create_daily_weekly_differencing(df, feature_name, week_window_size = 7, use_lag = True):
     '''
     Function to create daily and weekly difference features (difference between next 2 values or weekly values)
