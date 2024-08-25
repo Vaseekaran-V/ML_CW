@@ -5,6 +5,21 @@ import numpy as np
 def preprocess_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size = 2,
                     std_dev = True, use_lag = True, cum_mean = True,cum_sum = True,
                     years = [2021, 2022], return_min = True, return_max = True, week_window_size = 7):
+    
+    df_process = df.copy()
+
+    df_process = create_time_series_data(df = df_process, date_col=date_col, num_lags=num_lags, rolling_window_size=rolling_window_size,
+                                        std_dev=std_dev, use_lag=use_lag, cum_mean=cum_mean, cum_sum=cum_sum,
+                                        years=years, return_min=return_min, return_max=return_max, week_window_size=week_window_size)
+    
+    df_process = df_process.dropna(axis = 0)
+
+    return df_process
+
+
+def create_time_series_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size = 2,
+                    std_dev = True, use_lag = True, cum_mean = True,cum_sum = True,
+                    years = [2021, 2022], return_min = True, return_max = True, week_window_size = 7):
     '''
     Function to preprocess data and create features for the sales dataset
     Inputs:

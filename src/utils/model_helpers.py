@@ -1,22 +1,13 @@
 import numpy as np
 import pandas as pd
+pd.options.mode.chained_assignment = None  # default='warn'
+from itertools import product
 from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, RobustScaler
+from sklearn.linear_model import LinearRegression
 
-def train_model(model, X, y):
-    '''
-    Function to train the model using the input data
-
-    Inputs:
-        model: the model that needs to be trained
-        X: features to train the model
-        y: targets to train the model
-
-    Output:
-        a trained model
-    '''
-
-    model.fit(X, y)
-    return model
+from utils.data_preprocess import preprocess_data
 
 def evaluate_model(model, X, y, metric):
     '''
@@ -69,5 +60,139 @@ def get_num_cat_cols(df, skip_cols):
 
     return numerical_columns, categorical_columns
 
-def build_preprocessing_model_pipeline(X, skip_cols, numerical_scal)
+def build_preprocessing_model_pipeline(X, skip_cols, numerical_scaler = None,
+                                       categorical_scaler = None, ml_model = None) -> Pipeline:
+    '''
+    Build a complete pipeline with preprocessing and model
+
+    Inputs:
+        X: the input features with column names
+        skip_cols: columns to skip
+        numerical_scaler: a scaling object to scale the numerical fields
+        categorical_scaler: a scaling object to encode the categorical fields
+        ml_model: model object
+
+    Output:
+        trained model pipeline
+    '''
+    if numerical_scaler == None:
+        numerical_scaler = RobustScaler()
+
+    if categorical_scaler == None:
+        categorical_scaler = OneHotEncoder(drop = 'first', handle_unknown = 'ignore')
+
+    if ml_model == None:
+        ml_model = LinearRegression()
     
+    numerical_columns, categorical_columns = get_num_cat_cols(X, skip_cols)
+
+    numerical_scaler_pipeline = create_sklearn_pipeline(numerical_scaler, 'numerical_scaler')
+    categorical_scaler_pipeline = create_sklearn_pipeline(categorical_scaler, 'categorical_scaler')
+    model_pipeline = create_sklearn_pipeline(ml_model, 'model')
+
+    preprocessor = ColumnTransformer(transformers = [
+        ('numerical_processor', numerical_scaler_pipeline, numerical_columns),
+        ('categorical_processor', categorical_scaler_pipeline, categorical_columns)],
+        remainder = 'drop', force_int_remainder_cols = False)
+    
+    preprocessing_model_pipeline = Pipeline(steps = [('preprocessor', preprocessor), ('model', model_pipeline)])
+
+    return preprocessing_model_pipeline
+
+def create_production_df(start_date, end_date, depts_list, stores_list):
+    '''
+    Function to create a production dataframe, with date, item depts and stores. To be used for inference
+
+    Inputs:
+        start_date: starting date of the dataframe
+        end_date: ending date of the dataframe
+        depts_list: list of departments
+        stores_list: list of stores
+
+    Output:
+        dataframe with date, item depts and stores
+    '''
+    date_range = pd.date_range(start_date, end_date)
+
+    combinations = list(product(date_range, depts_list, stores_list))
+
+    production_df = pd.DataFrame(combinations, columns = ['date_id', 'item_dept', 'store'])
+
+    return production_df
+
+def recursive_forecasting(historical_df, stores_list, depts_list, production_df,
+                          model_sales = None, model_qty = None, max_window_length = 8):
+    '''
+    Function to forecast recursively for the specified production df
+
+    Inputs:
+        historical_df: dataframe with historical data
+        stores_list: list of stores
+        depts_list: list of departments
+        production_df: dataframe to be created
+        model_sales: model to predict sales
+        model_qty: model to predict item quantity
+        max_window_length: max window length of historical df to consider when creating time series features
+    Output:
+        dataframe with forecasted values
+    '''
+    count = 0
+    for current_date in production_df['date_id'].unique():
+        for dept in depts_list:
+            for store in stores_list:
+
+                relevant_historical_data = historical_df[(historical_df['store'] == store) & (historical_df['item_dept'] == dept)]
+                
+                current_day_data = production_df[
+                    (production_df['date_id'] == current_date) & 
+                    (production_df['item_dept'] == dept) & 
+                    (production_df['store'] == store)
+                ]
+
+                combined_df = pd.concat([relevant_historical_data, current_day_data], ignore_index=True).tail(max_window_length)
+                combined_df_processed = preprocess_data(combined_df, num_lags=3, rolling_window_size=3)
+
+                # current_day_data['net_sales'] = model_sales.predict(combined_df_processed.tail(1).drop(columns = ['net_sales', 'item_qty']))
+                # current_day_data['item_qty'] = model_qty.predict(combined_df_processed.tail(1).drop(columns = ['net_sales', 'item_qty']))
+
+                #Tester function to see if the function works
+                current_day_data['net_sales'] = count
+                current_day_data['item_qty'] = count
+
+                count += 1
+
+                production_df.loc[
+                    (production_df['date_id'] == current_date) &
+                    (production_df['item_dept'] == dept) &
+                    (production_df['store'] == store), ['net_sales', 'item_qty']
+                ] = current_day_data[['net_sales', 'item_qty']].values
+
+                historical_df = pd.concat([historical_df, current_day_data], ignore_index=True)
+
+    return production_df
+
+def generate_forecasting_df(start_date, end_date, depts_list, stores_list, historical_df,
+                            model_sales = None, model_qty = None, max_window_length = 8):
+    '''
+    Function to create the forecasting df and doing recursive forecasting
+
+    Inputs:
+        start_date: starting date of the dataframe
+        end_date: ending date of the dataframe
+        depts_list: list of departments
+        stores_list: list of stores
+        historical_df: dataframe with historical data
+        model_sales: model to predict sales
+        model_qty: model to predict item quantity
+        max_window_length: max window length of historical df to consider when creating time series features
+
+    Output:
+        dataframe with forecasted values
+    '''
+    production_df = create_production_df(start_date, end_date, depts_list, stores_list)
+
+    forecasted_df = recursive_forecasting(historical_df=historical_df, stores_list=stores_list,
+                                          depts_list=depts_list, production_df=production_df,
+                                          model_sales=model_sales, model_qty=model_qty,
+                                          max_window_length=max_window_length)
+    return forecasted_df
