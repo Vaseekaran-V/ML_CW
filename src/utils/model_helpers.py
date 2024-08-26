@@ -60,8 +60,8 @@ def get_num_cat_cols(df, skip_cols):
 
     return numerical_columns, categorical_columns
 
-def build_preprocessing_model_pipeline(X, skip_cols, numerical_scaler = None,
-                                       categorical_scaler = None, ml_model = None) -> Pipeline:
+def build_preprocessing_model_pipeline(X, skip_cols, numerical_scaler = None,categorical_scaler = None,
+                                       model_sales = None, model_qty = None) -> Pipeline:
     '''
     Build a complete pipeline with preprocessing and model
 
@@ -75,29 +75,35 @@ def build_preprocessing_model_pipeline(X, skip_cols, numerical_scaler = None,
     Output:
         trained model pipeline
     '''
-    if numerical_scaler == None:
-        numerical_scaler = RobustScaler()
+    # if numerical_scaler == None:
+    #     numerical_scaler = RobustScaler()
 
-    if categorical_scaler == None:
-        categorical_scaler = OneHotEncoder(drop = 'first', handle_unknown = 'ignore')
+    # if categorical_scaler == None:
+    #     categorical_scaler = OneHotEncoder(drop = 'first', handle_unknown = 'ignore')
 
-    if ml_model == None:
-        ml_model = LinearRegression()
+    if model_sales == None:
+        model_sales = LinearRegression()
+
+    if model_qty == None:
+        model_qty = LinearRegression()
     
     numerical_columns, categorical_columns = get_num_cat_cols(X, skip_cols)
 
     numerical_scaler_pipeline = create_sklearn_pipeline(numerical_scaler, 'numerical_scaler')
     categorical_scaler_pipeline = create_sklearn_pipeline(categorical_scaler, 'categorical_scaler')
-    model_pipeline = create_sklearn_pipeline(ml_model, 'model')
+    model_sales_pipeline = create_sklearn_pipeline(model_sales, 'model_sales')
+    model_qty_pipeline = create_sklearn_pipeline(model_qty, 'model_qty')
+
 
     preprocessor = ColumnTransformer(transformers = [
         ('numerical_processor', numerical_scaler_pipeline, numerical_columns),
         ('categorical_processor', categorical_scaler_pipeline, categorical_columns)],
         remainder = 'drop', force_int_remainder_cols = False)
     
-    preprocessing_model_pipeline = Pipeline(steps = [('preprocessor', preprocessor), ('model', model_pipeline)])
+    preprocessing_model_sales_pipeline = Pipeline(steps = [('preprocessor', preprocessor), ('model', model_sales_pipeline)])
+    preprocessing_model_qty_pipeline = Pipeline(steps = [('preprocessor', preprocessor), ('model', model_qty_pipeline)])
 
-    return preprocessing_model_pipeline
+    return preprocessing_model_sales_pipeline, preprocessing_model_qty_pipeline
 
 def create_production_df(start_date, end_date, depts_list, stores_list):
     '''
@@ -196,3 +202,99 @@ def generate_forecasting_df(start_date, end_date, depts_list, stores_list, histo
                                           model_sales=model_sales, model_qty=model_qty,
                                           max_window_length=max_window_length)
     return forecasted_df
+
+def create_train_test_set(df, date_col = 'date_id', test_date_start = '2022-02-01'):
+    '''
+    Function to create train and test data using date range
+    
+    Inputs:
+        df: dataframe to split
+        date_col: date column
+        test_date_start: the starting date of the test set (the dates before will be training, and after will be testing)
+
+    Outputs:
+        train and test dataframes
+    '''
+    df_process = df.copy()
+
+    df_train = df_process[df_process[date_col] < test_date_start]
+    df_test = df_process[df_process[date_col] >= test_date_start]
+
+    return df_train, df_test
+
+def create_X_y(df, y, drop_cols = ['date_id', 'item_dept', 'store', 'net_sales', 'item_qty']):
+    '''
+    Function to create X and y from the given dataframe
+
+    Inputs:
+        df: dataframe
+        y: target feature
+        drop_cols: cols to drop (other than y and training features)
+
+    Outputs:
+        training features and target (y)
+    '''
+
+    df_process = df.copy()
+
+    target = df_process[y]
+    features = df_process.drop(columns = drop_cols)
+
+    return features, target
+
+def create_X_and_targets_sales_qty(df, drop_cols = ['date_id', 'item_dept', 'store', 'net_sales', 'item_qty'],
+                                   net_sales_col = 'net_sales', item_qty_col = 'item_qty'):
+    '''
+    Function to create training features and the targets to forecast sales and item quantity
+
+    Inputs:
+        df: dataframe
+        drop_cols: cols to drop (other than y and training features)
+        net_sales_col: name of net sales column
+        item_qty_col: name of item quantities sold column
+
+    Outputs:
+        training features and targets (net sales and item quantities sold)
+
+    '''
+
+    df_process = df.copy()
+
+    features, y_net_sales = create_X_y(df = df_process, y = net_sales_col, drop_cols = drop_cols)
+    _, y_item_qty = create_X_y(df = df_process, y = item_qty_col, drop_cols = drop_cols)
+
+    return features, y_net_sales, y_item_qty
+
+def create_training_testing(df, date_col = 'date_id', test_date_start = '2022-02-01',
+                            drop_cols = ['date_id', 'item_dept', 'store', 'net_sales', 'item_qty'], net_sales_col = 'net_sales',
+                            item_qty_col = 'item_qty'):
+    '''
+    Function to create final train test splits
+
+    Inputs:
+        df: dataframe to split
+        date_col: date column
+        test_date_start: the starting date of the test set (the dates before will be training, and after will be testing)
+        drop_cols: cols to drop (other than y and training features)
+        net_sales_col: name of net sales column
+        item_qty_col: name of item quantities sold column
+    '''
+
+    df_process = df.copy()
+
+    df_train, df_test = create_train_test_set(df_process, date_col = date_col, test_date_start = test_date_start)
+
+    train_feat, train_net_sales, train_item_qty = create_X_and_targets_sales_qty(df_train, drop_cols = drop_cols,
+                                                                                 net_sales_col = net_sales_col,
+                                                                                 item_qty_col = item_qty_col)
+    
+    test_feat, test_net_sales, test_item_qty = create_X_and_targets_sales_qty(df_test, drop_cols = drop_cols,
+                                                                                 net_sales_col = net_sales_col,
+                                                                                 item_qty_col = item_qty_col)
+    
+    train_dict = {'train_features': train_feat, 'train_net_sales': train_net_sales, 'train_item_qty': train_item_qty}
+    test_dict = {'train_features': test_feat, 'train_net_sales': test_net_sales, 'train_item_qty': test_item_qty}
+
+    return train_dict, test_dict
+
+
