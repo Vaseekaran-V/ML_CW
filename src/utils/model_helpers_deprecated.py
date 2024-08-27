@@ -4,12 +4,81 @@ pd.options.mode.chained_assignment = None  # default='warn'
 from itertools import product
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import OneHotEncoder, RobustScaler
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_percentage_error
 
-from utils.DataPreprocessPipeline import DataPreprocessPipeline
-from utils.SalesItemQtyModel import SalesItemQtyModel
+from utils.data_preprocess import preprocess_data
+
+def create_sklearn_pipeline(pipeline_object, pipeline_name = 'sklearn_pipeline'):
+    '''
+    Function to create a sklearn pipeline using a sklearn object
+
+    Inputs:
+        pipeline_object: an sklearn object that can be used to create the sklearn pipeline
+        pipeline_name: name of the sklearn pipeline
+
+    Output:
+        sklearn pipeline object
+    '''
+
+    return Pipeline(steps=[(pipeline_name, pipeline_object)])
+
+def get_num_cat_cols(df, skip_cols):
+    '''
+    Function to get the numerical and categorical columns from a dataframe
+
+    Inputs:
+        df: dataframe to get the columns from
+        skip_cols: columns that need to be skipped
+
+    Outputs:
+        numerical_columns: list consisting of numerical columns
+        categorical_columns: list consisting of categorical values
+    '''
+
+    numerical_columns = df.select_dtypes(include=['number']).columns.tolist()
+    categorical_columns = df.select_dtypes(include=['object']).columns.tolist()
+
+    numerical_columns = [col for col in numerical_columns if col not in skip_cols]
+    categorical_columns = [col for col in categorical_columns if col not in skip_cols]
+
+    return numerical_columns, categorical_columns
+
+def build_preprocessing_model_pipeline(X, skip_cols, numerical_scaler = RobustScaler(),
+                                       categorical_scaler = OneHotEncoder(drop = 'first', handle_unknown = 'ignore'),
+                                       model_sales = LinearRegression(), model_qty = LinearRegression()) -> Pipeline:
+    '''
+    Build a complete pipeline with preprocessing and model
+
+    Inputs:
+        X: the input features with column names
+        skip_cols: columns to skip
+        numerical_scaler: a scaling object to scale the numerical fields
+        categorical_scaler: a scaling object to encode the categorical fields
+        model_sales: model object to predict sales
+        model_qty: model object to predict item quantity
+
+    Output:
+        trained model pipeline
+    '''
+    
+    numerical_columns, categorical_columns = get_num_cat_cols(X, skip_cols)
+
+    numerical_scaler_pipeline = create_sklearn_pipeline(numerical_scaler, 'numerical_scaler')
+    categorical_scaler_pipeline = create_sklearn_pipeline(categorical_scaler, 'categorical_scaler')
+    model_sales_pipeline = create_sklearn_pipeline(model_sales, 'model_sales')
+    model_qty_pipeline = create_sklearn_pipeline(model_qty, 'model_qty')
+
+
+    preprocessor = ColumnTransformer(transformers = [
+        ('numerical_processor', numerical_scaler_pipeline, numerical_columns),
+        ('categorical_processor', categorical_scaler_pipeline, categorical_columns)],
+        remainder = 'drop', force_int_remainder_cols = False)
+    
+    preprocessing_model_sales_pipeline = Pipeline(steps = [('preprocessor', preprocessor), ('model', model_sales_pipeline)])
+    preprocessing_model_qty_pipeline = Pipeline(steps = [('preprocessor', preprocessor), ('model', model_qty_pipeline)])
+
+    return preprocessing_model_sales_pipeline, preprocessing_model_qty_pipeline
 
 def create_production_df(start_date, end_date, depts_list, stores_list):
     '''
@@ -32,9 +101,8 @@ def create_production_df(start_date, end_date, depts_list, stores_list):
 
     return production_df
 
-def recursive_forecasting(historical_df, stores_list, depts_list, production_df, preprocessor = DataPreprocessPipeline(),
-                          dual_model = SalesItemQtyModel(), max_window_length = 8,
-                          main_cols = ['date_id','item_dept','store','net_sales', 'item_qty']):
+def recursive_forecasting(historical_df, stores_list, depts_list, production_df,
+                          model_sales = None, model_qty = None, max_window_length = 8):
     '''
     Function to forecast recursively for the specified production df
 
@@ -49,9 +117,7 @@ def recursive_forecasting(historical_df, stores_list, depts_list, production_df,
     Output:
         dataframe with forecasted values
     '''
-
-    historical_df = historical_df[main_cols]
-
+    count = 0
     for current_date in production_df['date_id'].unique():
         for dept in depts_list:
             for store in stores_list:
@@ -64,16 +130,17 @@ def recursive_forecasting(historical_df, stores_list, depts_list, production_df,
                     (production_df['store'] == store)
                 ]
 
-                combined_df = pd.concat([relevant_historical_data, current_day_data])
-                combined_df_processed = preprocessor.transform(combined_df)
+                combined_df = pd.concat([relevant_historical_data, current_day_data], ignore_index=True).tail(max_window_length)
+                combined_df_processed = preprocess_data(combined_df, num_lags=3, rolling_window_size=3)
 
-                one_row = combined_df_processed.tail(1).drop(columns = main_cols)
+                # current_day_data['net_sales'] = model_sales.predict(combined_df_processed.tail(1).drop(columns = ['net_sales', 'item_qty']))
+                # current_day_data['item_qty'] = model_qty.predict(combined_df_processed.tail(1).drop(columns = ['net_sales', 'item_qty']))
 
-                next_day_sales = dual_model.predict_sales(one_row)
-                next_day_item_qty = dual_model.predict_item_qty(one_row)
+                #Tester function to see if the function works
+                current_day_data['net_sales'] = count
+                current_day_data['item_qty'] = count
 
-                current_day_data['net_sales'] = next_day_sales
-                current_day_data['item_qty'] = next_day_item_qty
+                count += 1
 
                 production_df.loc[
                     (production_df['date_id'] == current_date) &
@@ -85,10 +152,8 @@ def recursive_forecasting(historical_df, stores_list, depts_list, production_df,
 
     return production_df
 
-
-def generate_forecasting_df(start_date, end_date, depts_list, stores_list, historical_df, preprocessor = DataPreprocessPipeline(),
-                            dual_model = SalesItemQtyModel(), max_window_length = 8,
-                            main_cols = ['date_id','item_dept','store','net_sales', 'item_qty']):
+def generate_forecasting_df(start_date, end_date, depts_list, stores_list, historical_df,
+                            model_sales = None, model_qty = None, max_window_length = 8):
     '''
     Function to create the forecasting df and doing recursive forecasting
 
@@ -107,9 +172,10 @@ def generate_forecasting_df(start_date, end_date, depts_list, stores_list, histo
     '''
     production_df = create_production_df(start_date, end_date, depts_list, stores_list)
 
-    forecasted_df = recursive_forecasting(historical_df=historical_df, stores_list=stores_list,depts_list=depts_list,
-                                          production_df=production_df,dual_model=dual_model,max_window_length=max_window_length,
-                                          preprocessor=preprocessor, main_cols=main_cols)
+    forecasted_df = recursive_forecasting(historical_df=historical_df, stores_list=stores_list,
+                                          depts_list=depts_list, production_df=production_df,
+                                          model_sales=model_sales, model_qty=model_qty,
+                                          max_window_length=max_window_length)
     return forecasted_df
 
 def create_train_test_set(df, date_col = 'date_id', test_date_start = '2022-02-01'):
@@ -205,3 +271,43 @@ def create_training_testing(df, date_col = 'date_id', test_date_start = '2022-02
     test_dict = {'train_features': test_feat, 'train_net_sales': test_net_sales, 'train_item_qty': test_item_qty}
 
     return train_dict, test_dict
+
+def train_model(train_dict, model_sales, model_qty):
+    '''
+    Function to train 2 models on training data to forecast sales and item quantity
+
+    Inputs:
+        train_dict: dictionary with train_features, net_sales, and item_qty
+        model_sales: model to predict sales
+        model_qty: model to predict item quantity
+
+    Outputs:
+        trained models to predict sales and item quantity
+    '''
+
+    train_features = train_dict['train_features']
+    train_net_sales = train_dict['train_net_sales']
+    train_item_qty = train_dict['train_item_qty']
+
+    model_sales.fit(train_features, train_net_sales)
+    model_qty.fit(train_features, train_item_qty)
+
+    return model_sales, model_qty
+
+def model_inference(test_features, model_sales, model_qty):
+    '''
+    Function to predict sales and quantity using test set
+
+    Inputs:
+        test_features: set of features for inferencing
+        model_sales: model to predict sales
+        model_qty: model to predict qty
+    '''
+
+    y_pred_model_sales = model_sales.predict(test_features)
+    y_pred_model_qty = model_qty.predidct(test_features)
+
+    return model_sales, model_qty
+
+
+
