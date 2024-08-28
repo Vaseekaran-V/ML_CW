@@ -57,6 +57,20 @@ class SalesItemQtyModel(BaseEstimator, RegressorMixin):
         else:
             return self.model_item_qty.predict(X)
         
+    def predict(self, X):
+        '''
+        Function to predict both sales and item quantity using the respective models.
+
+        Inputs:
+            X: Features to predict sales and item quantity.
+
+        Outputs:
+            Tuple: Predictions for sales and item quantity.
+        '''
+        sales_pred = self.predict_sales(X)
+        item_qty_pred = self.predict_item_qty(X)
+        return sales_pred, item_qty_pred
+        
     def score_sales(self, X, y_sales, scoring_func = mean_absolute_percentage_error):
         '''
         Function to get the score for the sales when predicting the values

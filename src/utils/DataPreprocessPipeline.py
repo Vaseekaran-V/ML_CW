@@ -45,6 +45,12 @@ class DataPreprocessPipeline:
         for i in range(self.num_lags):
             df[f'lag_{feature_name}_{i+1}'] = df.groupby(['item_dept', 'store'])[feature_name].shift(i+1)
         return df
+    
+    def _groupby_df(self, df):
+        '''Groups the dataframe by the given feature list.'''
+        df[self.date_col] = pd.to_datetime(df[self.date_col])
+        df_gb = df.groupby([self.date_col, 'item_dept', 'store'])[['item_qty', 'net_sales']].sum().reset_index()
+        return df_gb
 
     def _create_rolling_window_features(self, df, feature_name):
         '''Creates rolling window features for a given feature.'''
