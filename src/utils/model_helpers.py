@@ -10,6 +10,55 @@ from sklearn.metrics import mean_absolute_percentage_error
 
 from utils.DataPreprocessPipeline import DataPreprocessPipeline
 from utils.SalesItemQtyModel import SalesItemQtyModel
+import mlflow
+import mlflow.sklearn
+
+
+
+
+def get_results(train_dict, valid_dict, model_sales = None, model_item_qty = None):
+
+    #Setting training and validation X and targets
+    train_X = train_dict['train_features']
+    train_y_sales = train_dict['train_net_sales']
+    train_y_item_qty = train_dict['train_item_qty']
+
+    val_X = valid_dict['train_features']
+    val_y_sales = valid_dict['train_net_sales']
+    val_y_item_qty = valid_dict['train_item_qty']
+        
+    sales_item_qty_model = None
+
+    if model_sales is None and model_item_qty is None:
+        sales_item_qty_model = SalesItemQtyModel()
+    elif model_sales is None:
+        sales_item_qty_model = SalesItemQtyModel(model_item_qty=model_item_qty)
+    elif model_item_qty is None:
+        sales_item_qty_model = SalesItemQtyModel(model_sales=model_sales)
+    else:
+        sales_item_qty_model = SalesItemQtyModel(model_sales = model_sales, model_item_qty=model_item_qty)            
+    
+    model_sales = sales_item_qty_model.model_sales
+    model_item_qty = sales_item_qty_model.model_item_qty
+
+    sales_item_qty_model.fit(X = train_X, y_sales=train_y_sales, y_item_qty=train_y_item_qty)
+
+    #train score
+    score_train_sales = sales_item_qty_model.score_sales(train_X, train_y_sales)
+    score_train_item_qty = sales_item_qty_model.score_item_qty(train_X, train_y_item_qty)
+
+    #val score
+    score_val_sales = sales_item_qty_model.score_sales(val_X, val_y_sales)
+    score_val_item_qty = sales_item_qty_model.score_item_qty(val_X, val_y_item_qty)
+
+    print('Train Set Results...\n')
+    print(f'MAPE for predicting Sales: {score_train_sales}')
+    print(f'MAPE for predicting Item Qty: {score_train_item_qty}\n')
+
+    print('Test Set Results...\n')
+    print(f'MAPE for predicting Sales: {score_val_sales}')
+    print(f'MAPE for predicting Item Qty: {score_val_item_qty}\n')
+
 
 def create_production_df(start_date, end_date, depts_list, stores_list):
     '''
