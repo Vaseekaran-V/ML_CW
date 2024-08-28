@@ -1,6 +1,10 @@
 #Other extensions
 .DS_Store
 
+#Other folders
+catboost_info/
+mlruns/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
