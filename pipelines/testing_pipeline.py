@@ -3,11 +3,11 @@ import numpy as np
 import sys
 import os
 import pickle
+from pathlib import Path
 
 # Setting path to load util functions
-from pathlib import Path
-src_dir = Path.cwd().parents[0] / 'src'
-sys.path.append(os.path.abspath(src_dir))
+src_dir = Path(__file__).resolve().parent.parent / 'src'
+sys.path.append(str(src_dir))
 
 from utils.model_helpers import generate_forecasting_df
 
@@ -31,6 +31,4 @@ def testing_pipeline(data_path, preprocessor_path, model_path, start_date = '202
                                             stores_list=stores_list, historical_df=historical_df,
                                             preprocessor=loaded_preprocessor, dual_model=trained_model)
     
-    return forecasted_df
-
-
+    return forecasted_df, historical_df
