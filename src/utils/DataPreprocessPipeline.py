@@ -1,5 +1,6 @@
 import holidays
 import pandas as pd
+from sklearn.preprocessing import OneHotEncoder
 
 class DataPreprocessPipeline:
     '''
@@ -26,7 +27,7 @@ class DataPreprocessPipeline:
     def __init__(self, date_col='date_id', num_lags=1, rolling_window_size=2,
                  std_dev=True, use_lag=True, cum_mean=True, cum_sum=True, 
                  years=[2021, 2022], return_min=True, return_max=True, 
-                 week_window_size=7):
+                 week_window_size=7, categorical_encoder = OneHotEncoder(handle_unknown = 'ignore', drop = 'first')):
         
         self.date_col = date_col
         self.num_lags = num_lags
@@ -39,6 +40,31 @@ class DataPreprocessPipeline:
         self.return_min = return_min
         self.return_max = return_max
         self.week_window_size = week_window_size
+        self.categorical_encoder = categorical_encoder
+        self.categorical_columns = ['store', 'item_dept']
+
+        self.is_cat_enc_fitted = False
+
+    def _fit_categorical_encoder(self, df, categorical_columns = None):
+        '''Fits the categorical encoder on the given dataframe.'''
+        if categorical_columns is None:
+            categorical_columns = self.categorical_columns
+        if self.is_cat_enc_fitted:
+            return self
+        else:
+            self.categorical_encoder.fit(df[categorical_columns])
+            self.is_cat_enc_fitted = True
+            return self
+    
+    def _encode_categorical_columns(self, df, categorical_columns = None):
+        '''Encodes the categorical columns in the dataframe.'''
+        if categorical_columns is None:
+            categorical_columns = self.categorical_columns
+
+        self._fit_categorical_encoder(df, categorical_columns)
+        encoded_df = pd.DataFrame(self.categorical_encoder.transform(df[categorical_columns]).toarray(),
+                                  columns = self.categorical_encoder.get_feature_names_out(categorical_columns))
+        return pd.concat([df, encoded_df], axis = 1)
 
     def _create_lag_features(self, df, feature_name):
         '''Creates lag features for a given feature.'''
@@ -123,6 +149,7 @@ class DataPreprocessPipeline:
             df_gb = self._create_daily_weekly_differencing(df_gb, feature_name)
 
         df_gb = self._create_time_based_features(df_gb)
+        df_gb = self._encode_categorical_columns(df_gb, categorical_columns = self.categorical_columns)
         return df_gb.dropna(axis=0)
 
     def fit(self, X, y=None):
