@@ -2,7 +2,84 @@ import holidays
 import pandas as pd
 import numpy as np
 
+def merge_and_preprocess(training, testing = None, date_col = 'date_id', num_lags = 1, rolling_window_size = 2,
+                         std_dev = True, use_lag = True, cum_mean = True,cum_sum = True,years = [2021, 2022],
+                         return_min = True, return_max = True, week_window_size = 7):
+    '''
+    Function to merge the training and testing (if testing is given) to create time series features
+
+    Inputs:
+        training: dataframe with training data
+        testing: dataframe with testing data (optional)
+        date_col: col representing the date
+        num_lags: num of lag features to create
+        rolling_window_size: size of the rolling window
+        std_dev: whether to return standard deviation of rolling window features
+        use_lag: whether to use lag to create rolling window and other features (only this is supported)
+        cum_mean: whether to return cumulative mean of rolling window features
+        cum_sum: whether to return cumulative sum of rolling window features
+        years: list of years in the data
+        return_min: whether to return the minimum across the expanding window
+        return_max: whether to return the maximum across the expanding window
+        week_window_size: size of the week window (default is 7)
+
+    Output:
+        training and testing (optional and merged) dataframe with created features
+    '''
+    training_process = training.copy()
+    if testing is None:
+        training_process = preprocess_data(training_process, date_col=date_col, num_lags=num_lags,
+                                           rolling_window_size=rolling_window_size,std_dev=std_dev, use_lag=use_lag,
+                                           cum_mean=cum_mean, cum_sum=cum_sum,years=years, return_min=return_min,
+                                           return_max=return_max, week_window_size=week_window_size)
+        return training_process
+    
+    else:
+        testing_process = testing.copy()
+        full_df = pd.concat([training_process, testing_process])
+        full_df = preprocess_data(full_df, date_col=date_col, num_lags=num_lags, rolling_window_size=rolling_window_size,
+                                  std_dev=std_dev, use_lag=use_lag, cum_mean=cum_mean, cum_sum=cum_sum,years=years,
+                                  return_min=return_min, return_max=return_max, week_window_size=week_window_size)
+        return full_df
+
+
 def preprocess_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size = 2,
+                    std_dev = True, use_lag = True, cum_mean = True,cum_sum = True,
+                    years = [2021, 2022], return_min = True, return_max = True, week_window_size = 7):
+    
+    '''
+    Function to create time series features and drop null rows (creating a complete time series data)
+
+    Inputs:
+        df: dataframe to preprocess the data
+        date_col: col representing the date
+        num_lags: num of lag features to create
+        rolling_window_size: size of the rolling window
+        std_dev: whether to return standard deviation of rolling window features
+        use_lag: whether to use lag to create rolling window and other features (only this is supported)
+        cum_mean: whether to return cumulative mean of rolling window features
+        cum_sum: whether to return cumulative sum of rolling window features
+        years: list of years in the data
+        return_min: whether to return the minimum across the expanding window
+        return_max: whether to return the maximum across the expanding window
+        week_window_size: size of the week window (default is 7)
+
+    Output:
+        dataframe with created features
+    '''
+    
+    df_process = df.copy()
+
+    df_process = create_time_series_data(df = df_process, date_col=date_col, num_lags=num_lags, rolling_window_size=rolling_window_size,
+                                        std_dev=std_dev, use_lag=use_lag, cum_mean=cum_mean, cum_sum=cum_sum,
+                                        years=years, return_min=return_min, return_max=return_max, week_window_size=week_window_size)
+    
+    df_process = df_process.dropna(axis = 0)
+
+    return df_process
+
+
+def create_time_series_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size = 2,
                     std_dev = True, use_lag = True, cum_mean = True,cum_sum = True,
                     years = [2021, 2022], return_min = True, return_max = True, week_window_size = 7):
     '''
@@ -10,6 +87,16 @@ def preprocess_data(df, date_col = 'date_id', num_lags = 1, rolling_window_size 
     Inputs:
         df: dataframe to preprocess the data
         date_col: col representing the date
+        num_lags: num of lag features to create
+        rolling_window_size: size of the rolling window
+        std_dev: whether to return standard deviation of rolling window features
+        use_lag: whether to use lag to create rolling window and other features (only this is supported)
+        cum_mean: whether to return cumulative mean of rolling window features
+        cum_sum: whether to return cumulative sum of rolling window features
+        years: list of years in the data
+        return_min: whether to return the minimum across the expanding window
+        return_max: whether to return the maximum across the expanding window
+        week_window_size: size of the week window (default is 7)
 
     Output:
         dataframe with created features
@@ -182,6 +269,7 @@ def create_expanding_window_features(df, feature_name, return_min = True, return
     else:
         print("Function not yet designed to use without lag features")
         return None
+
 
 def create_daily_weekly_differencing(df, feature_name, week_window_size = 7, use_lag = True):
     '''
