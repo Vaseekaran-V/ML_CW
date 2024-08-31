@@ -4,6 +4,7 @@
 #Other folders
 catboost_info/
 mlruns/
+uploaded_datasets/
 
 
 # Byte-compiled / optimized / DLL files
