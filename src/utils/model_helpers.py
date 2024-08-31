@@ -14,9 +14,56 @@ import mlflow
 import mlflow.sklearn
 
 
+def store_level_results(test_df, pred_df, scoring = mean_absolute_percentage_error):
+    '''
+    evaluating the score for the predictions based on ground truth for store level
+
+    Inputs:
+        test_df: ground truth dataframe with stores, departments, and dates, and sales and item qty
+        pred_df: predicted dataframe with stores, departments, and dates, and sales and item qty
+        scoring: scoring metric
+    '''
+    test_df_stores = test_df.groupby(['date_id', 'store'])[['net_sales', 'item_qty']].sum().reset_index()
+    pred_df_stores = pred_df.groupby(['date_id', 'store'])[['net_sales', 'item_qty']].sum().reset_index()
+
+    sales_mape = mean_absolute_percentage_error(test_df_stores['net_sales'], pred_df_stores['net_sales'])
+    item_qty_mape = mean_absolute_percentage_error(test_df_stores['item_qty'], pred_df_stores['item_qty'])
+
+    print(f'Overall MAPE score for Sales: {sales_mape}')
+    print(f'Overall MAPE score for Item Qty: {item_qty_mape}\n')
+
+    for store in test_df_stores['store'].unique():
+        test_df_store_single = test_df_stores[test_df_stores['store'] == store]
+        pred_df_store_single = pred_df_stores[pred_df_stores['store'] == store]
+
+        sales_mape_store = mean_absolute_percentage_error(test_df_store_single['net_sales'], pred_df_store_single['net_sales'])
+        item_qty_mape_store = mean_absolute_percentage_error(test_df_store_single['item_qty'], pred_df_store_single['item_qty'])
+
+        print(f'For Store {store}, MAPE for predicting sales each day: {sales_mape_store}')
+        print(f'For Store {store}, MAPE for predicting item qty each day: {item_qty_mape_store}\n')
+
+        for item_dept in test_df['item_dept'].unique():
+            test_df_store_dept = test_df[(test_df['store'] == store) & (test_df['item_dept'] == item_dept)]
+            pred_df_store_dept = pred_df[(pred_df['store'] == store) & (pred_df['item_dept'] == item_dept)]
+
+            sales_mape_store_dept = mean_absolute_percentage_error(test_df_store_dept['net_sales'], pred_df_store_dept['net_sales'])
+            item_qty_mape_store_dept = mean_absolute_percentage_error(test_df_store_dept['item_qty'], pred_df_store_dept['item_qty'])
+
+            print(f'For Store {store} and Department {item_dept}, MAPE for predicting sales each day: {sales_mape_store_dept}')
+            print(f'For Store {store} and Department {item_dept}, MAPE for predicting item qty each day: {item_qty_mape_store_dept}\n')
 
 
-def get_results(train_dict, valid_dict, model_sales = None, model_item_qty = None):
+
+def get_results_fitted(train_dict, valid_dict, sales_item_qty_model):
+    '''
+    Function to get the results of the model on the training and validation (or testing) set
+
+    Inputs:
+        train_dict: dictionary with training features and targets
+        valid_dict: dictionary with validation features and targets
+        sales_item_qty_model: fitted SalesItemQtyModel
+
+    '''
 
     #Setting training and validation X and targets
     train_X = train_dict['train_features']
@@ -26,22 +73,6 @@ def get_results(train_dict, valid_dict, model_sales = None, model_item_qty = Non
     val_X = valid_dict['train_features']
     val_y_sales = valid_dict['train_net_sales']
     val_y_item_qty = valid_dict['train_item_qty']
-        
-    sales_item_qty_model = None
-
-    if model_sales is None and model_item_qty is None:
-        sales_item_qty_model = SalesItemQtyModel()
-    elif model_sales is None:
-        sales_item_qty_model = SalesItemQtyModel(model_item_qty=model_item_qty)
-    elif model_item_qty is None:
-        sales_item_qty_model = SalesItemQtyModel(model_sales=model_sales)
-    else:
-        sales_item_qty_model = SalesItemQtyModel(model_sales = model_sales, model_item_qty=model_item_qty)            
-    
-    model_sales = sales_item_qty_model.model_sales
-    model_item_qty = sales_item_qty_model.model_item_qty
-
-    sales_item_qty_model.fit(X = train_X, y_sales=train_y_sales, y_item_qty=train_y_item_qty)
 
     #train score
     score_train_sales = sales_item_qty_model.score_sales(train_X, train_y_sales)
@@ -82,8 +113,7 @@ def create_production_df(start_date, end_date, depts_list, stores_list):
     return production_df
 
 def recursive_forecasting(historical_df, stores_list, depts_list, production_df, preprocessor = DataPreprocessPipeline(),
-                          dual_model = SalesItemQtyModel(), max_window_length = 8,
-                          main_cols = ['date_id','item_dept','store','net_sales', 'item_qty']):
+                          dual_model = SalesItemQtyModel(), main_cols = ['date_id','item_dept','store','net_sales', 'item_qty']):
     '''
     Function to forecast recursively for the specified production df
 
@@ -118,8 +148,7 @@ def recursive_forecasting(historical_df, stores_list, depts_list, production_df,
 
                 one_row = combined_df_processed.tail(1).drop(columns = main_cols)
 
-                next_day_sales = dual_model.predict_sales(one_row)
-                next_day_item_qty = dual_model.predict_item_qty(one_row)
+                next_day_sales, next_day_item_qty = dual_model.predict(one_row)
 
                 current_day_data['net_sales'] = next_day_sales
                 current_day_data['item_qty'] = next_day_item_qty
@@ -136,8 +165,7 @@ def recursive_forecasting(historical_df, stores_list, depts_list, production_df,
 
 
 def generate_forecasting_df(start_date, end_date, depts_list, stores_list, historical_df, preprocessor = DataPreprocessPipeline(),
-                            dual_model = SalesItemQtyModel(), max_window_length = 8,
-                            main_cols = ['date_id','item_dept','store','net_sales', 'item_qty']):
+                            dual_model = SalesItemQtyModel(), main_cols = ['date_id','item_dept','store','net_sales', 'item_qty']):
     '''
     Function to create the forecasting df and doing recursive forecasting
 
@@ -157,8 +185,8 @@ def generate_forecasting_df(start_date, end_date, depts_list, stores_list, histo
     production_df = create_production_df(start_date, end_date, depts_list, stores_list)
 
     forecasted_df = recursive_forecasting(historical_df=historical_df, stores_list=stores_list,depts_list=depts_list,
-                                          production_df=production_df,dual_model=dual_model,max_window_length=max_window_length,
-                                          preprocessor=preprocessor, main_cols=main_cols)
+                                          production_df=production_df,dual_model=dual_model,preprocessor=preprocessor,
+                                          main_cols=main_cols)
     return forecasted_df
 
 def create_train_test_set(df, date_col = 'date_id', test_date_start = '2022-02-01'):
