@@ -95,6 +95,3 @@ class SalesItemQtyModel(BaseEstimator, RegressorMixin):
         y_pred = self.predict_item_qty(X)
         return scoring_func(y_item_qty, y_pred)
     
-    # def recursive_forecast(self, )
-
-    
