@@ -1,6 +1,8 @@
 import holidays
 import pandas as pd
+import numpy as np
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import LinearRegression
 
 class DataPreprocessPipeline:
     '''
@@ -134,6 +136,32 @@ class DataPreprocessPipeline:
                 df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].diff(self.week_window_size)
             )
         return df
+    
+    def _calculate_trend(self, x, degree = 1):
+        """
+        Calculates the trend of a pandas Series.
+        """
+        x = x.dropna()  # Drop null values
+        if len(x) < 2:
+            return np.nan  # Not enough data to calculate trend
+        X = np.arange(len(x))
+        y = x.values
+        slope, _ = np.polyfit(X, y, degree)
+        return slope
+
+    def _create_trend_features(self, df, feature_name):
+        """
+        Create trend features for a given feature.
+        """
+        trend_feature_name = f'trend_{feature_name}'
+        df[trend_feature_name] = np.nan
+
+        for key, group in df.groupby(['item_dept', 'store']):
+            group = group.sort_values(by=self.date_col)
+            trend_values = group[f'lag_{feature_name}_1'].expanding().apply(lambda x: self._calculate_trend(x), raw=False)
+            df.loc[group.index, trend_feature_name] = trend_values
+
+        return df
 
     def _preprocess_dataframe(self, df):
         '''Applies all preprocessing steps to a dataframe.'''
@@ -147,6 +175,7 @@ class DataPreprocessPipeline:
             df_gb = self._create_cumulative_features(df_gb, feature_name)
             df_gb = self._create_expanding_window_features(df_gb, feature_name)
             df_gb = self._create_daily_weekly_differencing(df_gb, feature_name)
+            df_gb = self._create_trend_features(df_gb, feature_name)
 
         df_gb = self._create_time_based_features(df_gb)
         df_gb = self._encode_categorical_columns(df_gb, categorical_columns = self.categorical_columns)
