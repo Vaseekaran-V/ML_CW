@@ -131,7 +131,7 @@ class DataPreprocessPipeline:
         if self.use_lag:
             df[f'diff_{feature_name}'] = df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].diff()
             df[f'diff_{feature_name}_{self.week_window_size}'] = (
-                df.groupby(['item_dept', 'store'])['item_qty'].diff(self.week_window_size)
+                df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].diff(self.week_window_size)
             )
         return df
 

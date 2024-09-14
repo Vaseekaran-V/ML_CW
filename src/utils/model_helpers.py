@@ -26,8 +26,8 @@ def store_level_results(test_df, pred_df, scoring = mean_absolute_percentage_err
     test_df_stores = test_df.groupby(['date_id', 'store'])[['net_sales', 'item_qty']].sum().reset_index()
     pred_df_stores = pred_df.groupby(['date_id', 'store'])[['net_sales', 'item_qty']].sum().reset_index()
 
-    sales_mape = mean_absolute_percentage_error(test_df_stores['net_sales'], pred_df_stores['net_sales'])
-    item_qty_mape = mean_absolute_percentage_error(test_df_stores['item_qty'], pred_df_stores['item_qty'])
+    sales_mape = scoring(test_df_stores['net_sales'], pred_df_stores['net_sales'])
+    item_qty_mape = scoring(test_df_stores['item_qty'], pred_df_stores['item_qty'])
 
     print(f'Overall MAPE score for Sales: {sales_mape}')
     print(f'Overall MAPE score for Item Qty: {item_qty_mape}\n')
@@ -36,8 +36,8 @@ def store_level_results(test_df, pred_df, scoring = mean_absolute_percentage_err
         test_df_store_single = test_df_stores[test_df_stores['store'] == store]
         pred_df_store_single = pred_df_stores[pred_df_stores['store'] == store]
 
-        sales_mape_store = mean_absolute_percentage_error(test_df_store_single['net_sales'], pred_df_store_single['net_sales'])
-        item_qty_mape_store = mean_absolute_percentage_error(test_df_store_single['item_qty'], pred_df_store_single['item_qty'])
+        sales_mape_store = scoring(test_df_store_single['net_sales'], pred_df_store_single['net_sales'])
+        item_qty_mape_store = scoring(test_df_store_single['item_qty'], pred_df_store_single['item_qty'])
 
         print(f'For Store {store}, MAPE for predicting sales each day: {sales_mape_store}')
         print(f'For Store {store}, MAPE for predicting item qty each day: {item_qty_mape_store}\n')
@@ -46,8 +46,8 @@ def store_level_results(test_df, pred_df, scoring = mean_absolute_percentage_err
             test_df_store_dept = test_df[(test_df['store'] == store) & (test_df['item_dept'] == item_dept)]
             pred_df_store_dept = pred_df[(pred_df['store'] == store) & (pred_df['item_dept'] == item_dept)]
 
-            sales_mape_store_dept = mean_absolute_percentage_error(test_df_store_dept['net_sales'], pred_df_store_dept['net_sales'])
-            item_qty_mape_store_dept = mean_absolute_percentage_error(test_df_store_dept['item_qty'], pred_df_store_dept['item_qty'])
+            sales_mape_store_dept = scoring(test_df_store_dept['net_sales'], pred_df_store_dept['net_sales'])
+            item_qty_mape_store_dept = scoring(test_df_store_dept['item_qty'], pred_df_store_dept['item_qty'])
 
             print(f'For Store {store} and Department {item_dept}, MAPE for predicting sales each day: {sales_mape_store_dept}')
             print(f'For Store {store} and Department {item_dept}, MAPE for predicting item qty each day: {item_qty_mape_store_dept}\n')
