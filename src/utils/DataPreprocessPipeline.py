@@ -1,6 +1,8 @@
 import holidays
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import LinearRegression
+from joblib import Parallel, delayed
 
 class DataPreprocessPipeline:
     '''
@@ -135,6 +137,38 @@ class DataPreprocessPipeline:
             )
         return df
 
+    def _calculate_trend(x):
+        """
+        Calculates the trend of a pandas Series.
+        """
+        x = x.dropna()  # Drop null values
+        if len(x) < 2:
+            return np.nan  # Not enough data to calculate trend
+        X = np.arange(len(x))
+        y = x.values
+        slope, _ = np.polyfit(X, y, 1)
+        return slope
+
+    def _create_trend_features_rolling(self, df, feature_name):
+        """
+        Create trend features for a given feature.
+        """
+        trend_feature_name = f'trend_{feature_name}_rolling'
+        df[trend_feature_name] = np.nan
+
+        def process_group(group):
+            group = group.sort_values(by=self.date_col)
+            trend_values = group[f'lag_{feature_name}_1'].rolling(window=len(group), min_periods=2).apply(
+                lambda x: _calculate_trend(x), raw=False)
+            return group.index, trend_values
+
+        results = Parallel(n_jobs=-1)(delayed(process_group)(group) for key, group in df.groupby(['item_dept', 'store']))
+
+        for index, trend_values in results:
+            df.loc[index, trend_feature_name] = trend_values
+
+        return df
+
     def _preprocess_dataframe(self, df):
         '''Applies all preprocessing steps to a dataframe.'''
         df = df.copy()
@@ -147,6 +181,8 @@ class DataPreprocessPipeline:
             df_gb = self._create_cumulative_features(df_gb, feature_name)
             df_gb = self._create_expanding_window_features(df_gb, feature_name)
             df_gb = self._create_daily_weekly_differencing(df_gb, feature_name)
+            df_gb = self._create_trend_features(df_gb, feature_name)
+            df_gb = self._create_trend_features_rolling(df_gb, feature_name)
 
         df_gb = self._create_time_based_features(df_gb)
         df_gb = self._encode_categorical_columns(df_gb, categorical_columns = self.categorical_columns)
