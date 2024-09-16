@@ -1,5 +1,6 @@
 import holidays
 import pandas as pd
+import numpy as np
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
 from joblib import Parallel, delayed
@@ -137,6 +138,7 @@ class DataPreprocessPipeline:
             )
         return df
 
+    @staticmethod
     def _calculate_trend(x):
         """
         Calculates the trend of a pandas Series.
@@ -159,7 +161,7 @@ class DataPreprocessPipeline:
         def process_group(group):
             group = group.sort_values(by=self.date_col)
             trend_values = group[f'lag_{feature_name}_1'].rolling(window=len(group), min_periods=2).apply(
-                lambda x: _calculate_trend(x), raw=False)
+                lambda x: self._calculate_trend(x), raw=False)
             return group.index, trend_values
 
         results = Parallel(n_jobs=-1)(delayed(process_group)(group) for key, group in df.groupby(['item_dept', 'store']))
@@ -181,7 +183,7 @@ class DataPreprocessPipeline:
             df_gb = self._create_cumulative_features(df_gb, feature_name)
             df_gb = self._create_expanding_window_features(df_gb, feature_name)
             df_gb = self._create_daily_weekly_differencing(df_gb, feature_name)
-            df_gb = self._create_trend_features(df_gb, feature_name)
+            # df_gb = self._create_trend_features(df_gb, feature_name)
             df_gb = self._create_trend_features_rolling(df_gb, feature_name)
 
         df_gb = self._create_time_based_features(df_gb)
