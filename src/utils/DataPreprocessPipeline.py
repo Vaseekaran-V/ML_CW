@@ -171,20 +171,35 @@ class DataPreprocessPipeline:
 
         return df
 
+    def _create_ewm_features(self, df, feature_name, span=30):
+        """
+        Create exponentially weighted moving average features for a given feature.
+        """
+        ewm_feature_name = f'ewm_{feature_name}'
+        reverse_ewm_feature_name = f'reverse_ewm_{feature_name}'
+
+        df[ewm_feature_name] = df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].transform(lambda x: x.ewm(span=span).mean())
+        df[reverse_ewm_feature_name] = df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].transform(lambda x: x[::-1].ewm(span=span).mean()[::-1])
+
+        return df
+
+    
     def _preprocess_dataframe(self, df):
         '''Applies all preprocessing steps to a dataframe.'''
         df = df.copy()
         df[self.date_col] = pd.to_datetime(df[self.date_col])
         df_gb = df.groupby([self.date_col, 'item_dept', 'store'])[['item_qty', 'net_sales']].sum().reset_index()
+        print(type(df_gb))
 
         for feature_name in ['item_qty', 'net_sales']:
             df_gb = self._create_lag_features(df_gb, feature_name)
-            df_gb = self._create_rolling_window_features(df_gb, feature_name)
-            df_gb = self._create_cumulative_features(df_gb, feature_name)
-            df_gb = self._create_expanding_window_features(df_gb, feature_name)
-            df_gb = self._create_daily_weekly_differencing(df_gb, feature_name)
-            # df_gb = self._create_trend_features(df_gb, feature_name)
-            df_gb = self._create_trend_features_rolling(df_gb, feature_name)
+            # df_gb = self._create_rolling_window_features(df_gb, feature_name)
+            # df_gb = self._create_cumulative_features(df_gb, feature_name)
+            # df_gb = self._create_expanding_window_features(df_gb, feature_name)
+            # df_gb = self._create_daily_weekly_differencing(df_gb, feature_name)
+            # # df_gb = self._create_trend_features(df_gb, feature_name)
+            # df_gb = self._create_trend_features_rolling(df_gb, feature_name)
+            df_gb = self._create_ewm_features(df_gb, feature_name)
 
         df_gb = self._create_time_based_features(df_gb)
         df_gb = self._encode_categorical_columns(df_gb, categorical_columns = self.categorical_columns)
