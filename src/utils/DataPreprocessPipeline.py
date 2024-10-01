@@ -30,7 +30,8 @@ class DataPreprocessPipeline:
     def __init__(self, date_col='date_id', num_lags=1, rolling_window_size=2,
                  std_dev=True, use_lag=True, cum_mean=True, cum_sum=True, 
                  years=[2021, 2022], return_min=True, return_max=True, 
-                 week_window_size=7, categorical_encoder = OneHotEncoder(handle_unknown = 'ignore', drop = 'first')):
+                 week_window_size=7, categorical_encoder = OneHotEncoder(handle_unknown = 'ignore', drop = 'first'),
+                 alpha = None):
         
         self.date_col = date_col
         self.num_lags = num_lags
@@ -45,6 +46,7 @@ class DataPreprocessPipeline:
         self.week_window_size = week_window_size
         self.categorical_encoder = categorical_encoder
         self.categorical_columns = ['store', 'item_dept']
+        self.alpha = alpha
 
         self.is_cat_enc_fitted = False
 
@@ -171,15 +173,15 @@ class DataPreprocessPipeline:
 
         return df
 
-    def _create_ewm_features(self, df, feature_name, span=30):
+    def _create_ewm_features(self, df, feature_name, span=12):
         """
         Create exponentially weighted moving average features for a given feature.
         """
         ewm_feature_name = f'ewm_{feature_name}'
         reverse_ewm_feature_name = f'reverse_ewm_{feature_name}'
 
-        df[ewm_feature_name] = df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].transform(lambda x: x.ewm(span=span).mean())
-        df[reverse_ewm_feature_name] = df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].transform(lambda x: x[::-1].ewm(span=span).mean()[::-1])
+        df[ewm_feature_name] = df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].transform(lambda x: x.ewm(min_periods=3, alpha = self.alpha).mean())
+        df[reverse_ewm_feature_name] = df.groupby(['item_dept', 'store'])[f'lag_{feature_name}_1'].transform(lambda x: x[::-1].ewm(min_periods=3, alpha = self.alpha).mean()[::-1])
 
         return df
 
@@ -194,7 +196,7 @@ class DataPreprocessPipeline:
         for feature_name in ['item_qty', 'net_sales']:
             df_gb = self._create_lag_features(df_gb, feature_name)
             # df_gb = self._create_rolling_window_features(df_gb, feature_name)
-            # df_gb = self._create_cumulative_features(df_gb, feature_name)
+            df_gb = self._create_cumulative_features(df_gb, feature_name)
             # df_gb = self._create_expanding_window_features(df_gb, feature_name)
             # df_gb = self._create_daily_weekly_differencing(df_gb, feature_name)
             # # df_gb = self._create_trend_features(df_gb, feature_name)
